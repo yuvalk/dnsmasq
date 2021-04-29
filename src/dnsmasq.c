@@ -1826,12 +1826,11 @@ int icmp_ping(struct in_addr addr)
 
       check_log_writer(0);
       check_dns_listeners(now);
-
 #ifdef HAVE_DHCP6
       if (daemon->doing_ra && poll_check(daemon->icmp6fd, POLLIN))
 	icmp6_packet(now);
 #endif
-      
+
 #ifdef HAVE_TFTP
       check_tftp_listeners(now);
 #endif
@@ -1857,6 +1856,54 @@ int icmp_ping(struct in_addr addr)
 #endif
 
   return gotreply;
+}
+
+void delay_dhcp(time_t start, int sec)
+{
+	/* Delay processing DHCP packets for "sec" seconds counting from "start",
+	 * while continuing to service events */
+
+	int rc, timeout_count;
+	time_t now;
+
+	for (now = dnsmasq_time(), timeout_count = 0;
+			(difftime(now, start) <= (float)sec) && (timeout_count < sec);) {
+		poll_reset();
+		set_dns_listeners(now);
+		set_log_writer();
+
+#ifdef HAVE_DHCP6
+      		if (daemon->doing_dhcp6 || daemon->relay6)
+			poll_listen(daemon->dhcp6fd, POLLIN);
+	
+		if (daemon->doing_ra)
+			poll_listen(daemon->icmp6fd, POLLIN);
+#endif
+
+		rc = do_poll(250);
+
+		if (rc < 0)
+			continue;
+		else if (rc == 0)
+			timeout_count++;
+
+		now = dnsmasq_time();
+
+		check_log_writer(0);
+		check_dns_listeners(now);
+
+#ifdef HAVE_DHCP6
+		if ((daemon->doing_dhcp6 || daemon->relay6) && poll_check(daemon->dhcp6fd, POLLIN))
+			dhcp6_packet(now);
+
+		if (daemon->doing_ra && poll_check(daemon->icmp6fd, POLLIN))
+			icmp6_packet(now);
+#endif
+
+#ifdef HAVE_TFTP
+		check_tftp_listeners(now);
+#endif
+	}
 }
 #endif
 

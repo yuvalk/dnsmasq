@@ -15,6 +15,7 @@
 */
 
 #include "dnsmasq.h"
+#include <linux/sockios.h>
 
 #ifdef HAVE_DHCP
 
@@ -342,7 +343,15 @@ void dhcp_packet(time_t now, int pxe_fd)
       if (iov.iov_len == 0)
 	return;
     }
-  
+
+  int starttime = now;  
+  struct timeval tv;
+
+  /* use timestamp of udp packet */
+  if (ioctl(fd, SIOCGSTAMP, &tv) == 0)
+	  starttime = tv.tv_sec;
+  delay_dhcp(starttime, 30);
+
   msg.msg_name = &dest;
   msg.msg_namelen = sizeof(dest);
   msg.msg_control = NULL;
